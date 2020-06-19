@@ -1,0 +1,215 @@
+---
+title: "homework 3"
+author: "Jing Liao"
+output:
+  pdf_document: default
+  word_document: default
+---
+
+## problem 1
+
+Use  a  SVM  model  to  predict  heart  disease  based  on  real  and  binary  variables  only  (Real:1,4,5,8,10,12, Binary:  2,6,9 ).  Use the first 200 observation for training and the remaining 70observations for testing.  You can use 20% of the training cases for validation if needed.
+
+```{r,warning=FALSE,message=FALSE}
+library(MASS)
+library(e1071)
+heart=read.table("/Users/jing/Desktop/235/heart.txt",sep=' ',header=F)
+heart<-heart[,-c(3,7,11,13)]
+n = dim(heart)[1]
+p = dim(heart)[2]
+set.seed(12345)
+ind.tr <- sample(n, 200)
+ind.te <- setdiff(seq(1, n), ind.tr)
+attach(heart)
+heart$V14<-as.factor(heart$V14)
+
+svm.m <- svm(V14~., kernel='linear', data=heart[ind.tr, ])
+pred.class <- predict(svm.m, newdata=heart[ind.te, ])
+act.class <- heart$V14[ind.te]
+table(act.class, pred.class)
+mean(act.class == pred.class)
+plot(svm.m, heart[ind.te, ], formula=V1~V4)
+
+
+
+
+svm.m <- svm(V14~., kernel='radial', data=heart[ind.tr, ])
+pred.class <- predict(svm.m, newdata=heart[ind.te, ])
+act.class <- heart$V14[ind.te]
+table(act.class, pred.class)
+mean(act.class == pred.class)
+plot(svm.m, heart[ind.te, ], formula= V1~V4)
+
+
+svm.m <- svm(V14~., kernel='polynomial', data=heart[ind.tr, ])
+pred.class <- predict(svm.m, newdata=heart[ind.te, ])
+act.class <- heart$V14[ind.te]
+table(act.class, pred.class)
+mean(act.class == pred.class)
+plot(svm.m, heart[ind.te, ], formula= V1~V4)
+
+```
+
+We could find that the linear kernel works the best with 85.7% predicted accuracy,then radical kernel works second better with 78.6% predicted accuracy, polynomial knernel works worst with 75.7% predicted accuracy.
+
+
+## problem 2
+
+We want to predictYgivenX1 only.  Build a Gaussian process regression model based on the first 70 observations anduse it to predict the outcome values for the remaining 30 observations.  
+For the covariancefunction,
+try the following:(a)  Wiener process (Brownian motion)
+(b)  OU process
+(c)  Squared exponentialFix the parameters at some reasonable values (you don’t need to infer the parameters). 
+Plot the resulting models and compare their performance using MSE.
+```{r,warning=FALSE,message=FALSE}
+dat<-read.table("/Users/jing/Desktop/235/hw2/splineExample.txt",sep=' ',header=T)
+attach(dat)
+x<-dat$x1
+#x<-unique(x)
+y<-dat$y
+lambda = 1
+k =1
+rho = 0.5
+sigma = 0.1
+n=100
+set.seed(1234)
+# Dividing the data into training and test
+ind.tr <- sample(n, 70)
+ind.te <- setdiff(seq(1, n), ind.tr)
+x.tr <- x[ind.tr]
+y.tr <- y[ind.tr]
+x.te <- x[ind.te]
+y.te <- y[ind.te]
+nTrain = length(x.tr)
+nTest = length(x.te)
+
+gpReg.w = function(x.tr, y.tr, x.te, rho, sigma){
+  x = c(x.tr, x.te);
+  n = length(x);
+  diffMatAll = matrix(x, nrow=n, ncol=n) - matrix(x, nrow=n, ncol=n, byrow=TRUE)
+  cov<- matrix(0,n,n)
+  for(i in 1:n){
+    for (j in 1:n) {
+      
+      cov[i,j]=min(x[i],x[j])
+    }
+  } 
+  C= sigma*cov+ sigma*diag(1, nrow=n, ncol=n)
+  Ctrn = C[1:nTrain, 1:nTrain];
+  invCtrn = solve(Ctrn);
+  
+  K = C[1:nTrain, (nTrain+1):n];
+  v = C[(nTrain+1):n, (nTrain+1):n];
+  
+  # E(y.te | y.tr)
+  y.hat = t(K)%*%invCtrn%*%y.tr;
+  
+  # Var(y.te | y.te)
+  v.hat = v - t(K)%*%invCtrn%*%K; 
+  
+  return(list(y.hat=y.hat, v.hat=v.hat))
+  
+}
+
+res.w = gpReg.w(x.tr, y.tr, x.te,rho, sigma)
+
+y1.hat = res.w$y.hat
+#v1.hat = res.w$v.hat
+
+mse.w = mean((y.te - y1.hat)^2)
+mse.w
+
+
+
+gpReg.o = function(x.tr, y.tr, x.te, k, rho, sigma){
+  
+  x = c(x.tr, x.te);
+  
+  n = length(x);
+  
+  
+  diffMatAll = matrix(x, nrow=n, ncol=n) - matrix(x, nrow=n, ncol=n, byrow=TRUE)
+  
+  C =sigma^2*exp(-abs(diffMatAll)/rho)+ sigma*diag(1, nrow=n, ncol=n) ;
+  
+  Ctrn = C[1:nTrain, 1:nTrain];
+  invCtrn = solve(Ctrn);
+  
+  K = C[1:nTrain, (nTrain+1):n];
+  v = C[(nTrain+1):n, (nTrain+1):n];
+  
+  # E(y.te | y.tr)
+  y.hat = t(K)%*%invCtrn%*%y.tr;
+  
+  # Var(y.te | y.te)
+  v.hat = v - t(K)%*%invCtrn%*%K; 
+  
+  return(list(y.hat=y.hat, v.hat=v.hat))
+  
+}
+
+res.o = gpReg.o(x.tr, y.tr, x.te, k, rho, sigma=0.9)
+
+y2.hat = res.o$y.hat
+v2.hat = res.o$v.hat
+
+mse.o = mean((y.te - y2.hat)^2)
+mse.o
+
+
+
+gpReg.e = function(x.tr, y.tr, x.te, k, rho, sigma){
+  
+  x = c(x.tr, x.te);
+  
+  n = length(x);
+  
+  
+  diffMatAll = matrix(x, nrow=n, ncol=n) - matrix(x, nrow=n, ncol=n, byrow=TRUE)
+  
+  C = k^2*exp(-lambda*(diffMatAll^2))+ sigma*diag(1, nrow=n, ncol=n);
+  
+  Ctrn = C[1:nTrain, 1:nTrain];
+  invCtrn = solve(Ctrn);
+  
+  K = C[1:nTrain, (nTrain+1):n];
+  v = C[(nTrain+1):n, (nTrain+1):n];
+  
+  # E(y.te | y.tr)
+  y.hat = t(K)%*%invCtrn%*%y.tr;
+  
+  # Var(y.te | y.te)
+  v.hat = v - t(K)%*%invCtrn%*%K; 
+  
+  return(list(y.hat=y.hat, v.hat=v.hat))
+  
+}
+
+res.e = gpReg.e(x.tr, y.tr, x.te, k, rho, sigma)
+
+y3.hat = res.e$y.hat
+v3.hat = res.e$v.hat
+
+mse.e = mean((y.te - y3.hat)^2)
+mse.e
+
+x.t1 <- seq(-3, 3, .1)
+res.1 = gpReg.w(x.tr, y.tr, x.t1, rho, sigma)
+res.2 = gpReg.o(x.tr, y.tr, x.t1, rho=0.5, sigma=0.9)
+res.3 = gpReg.e(x.tr, y.tr, x.t1, rho, sigma,k=1)
+
+y1.hat = res.1$y.hat
+y2.hat = res.2$y.hat
+y3.hat = res.3$y.hat
+plot(x,y)
+lines(x.t1, y1.hat, lwd=2,col="red")
+lines(x.t1, y2.hat, lwd=2,col="blue")
+lines(x.t1, y3.hat, lwd=2,col="green")
+legend(0.5,-2,c("Winener process","OU process","Sqaured Expontial"),
+col=c("red","blue","green"),lty=c(1,1,1),box.lty=0)
+
+
+
+
+```
+From the plot, we could find that the kernel Squared exponential works better with samllest predicted error 0.15,OU process works second better  with samllest predicted error 0.16 then Winner process with samllest predicted error 0.22.

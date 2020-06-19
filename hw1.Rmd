@@ -1,0 +1,178 @@
+---
+output:
+  word_document: default
+  html_document: default
+---
+
+##Problem1
+###(a) 
+Model the distribution using a mixture of K Gaussians with 
+K = 3, 4, 5. Use BIC and AIC to find the best model.
+
+```{r}
+library(ggplot2)
+library(mvtnorm)
+library(bayesm)
+library("mclust")
+set.seed(123)
+data=read.table("/Users/jing/Desktop/235/hw1/clustering data.txt",sep=',',header=T)
+x1=data$X1
+x2=data$X2
+#jpeg('../figures/softKmeansData.jpeg')
+p <- ggplot(data, aes(x1, x2)) + xlim(c(-10, 15)) + ylim(-16, 8)
+p + geom_point()
+#dev.off()
+mod3 <- densityMclust(data,3)
+mod4 <- densityMclust(data,4)
+mod5 <- densityMclust(data,5)
+AIC(mod3)
+BIC(mod3)
+AIC(mod4)
+BIC(mod4)
+AIC(mod5)
+BIC(mod5)
+```
+From the plot of the original data,we could find the data is clustering in 4 groups.
+We could find that when K=4,the AIC and BIC achieve the minimum values.
+
+###(b) 
+Use the optimum K from part (a) to cluster data using K-Means clustering.
+```{r}
+# K-means clustering with K=4
+X=data
+N <- nrow(X)
+K = 4
+set.seed(123)
+# Initializing the centroids 
+Cent <- cbind(runif(K, min(X[, 1]), max(X[, 1])), runif(K, min(X[, 2]), max(X[, 2])) )
+D <- matrix(NA, N, K)
+# run the algorithm for 500 iterations; in general, we should stop when the assignments don't change anymore.
+for(i in 1:500){
+  # Calculating the distance of each data point from the K centroids.   
+  for (k in 1:K){
+    D[, k] <- rowSums( (sweep(X, 2, Cent[k, ]))^2)
+  }
+  
+  # Assigning the data points to the closest centroid  
+  clus <- apply(D, 1, which.min)
+  
+  # Finding the new centroids   
+  Cent <- by(X, INDICES=clus, FUN=colMeans)  
+  Cent <- do.call(rbind, Cent)  
+  
+}  
+data <- data.frame(x1 = X[, 1], x2 = X[, 2], clus = factor(clus))
+
+#jpeg('../figures/kmeansResults.jpeg')
+p <- ggplot(data, aes(x1, x2))
+p + geom_point(aes(color=clus, shape=clus)) 
+```
+We could find that the result of K-Means clustering is consistent with the fact.
+
+
+
+###(c) 
+Use a hierarchical clustering method to cluster the data. Then use the optimum K from
+part (a) to divide the observations into K groups.
+```{r}
+hc <- hclust(dist(X), "single")
+dend <- as.dendrogram(hc)
+
+plot(dend, leaflab = "none")
+abline(h=4, lty=2, lwd=2)
+clus <- cutree(hc, k=4)
+
+data <- data.frame(x1 = X[, 1], x2 = X[, 2], clus = factor(clus))
+
+#jpeg('../figures/kmeansResults2.jpeg')
+p <- ggplot(data, aes(x1, x2))
+p + geom_point(aes(color=clus, shape=clus)) 
+
+```
+We use single linkage clustering in hierarchical clustering, the result is consistent with the fact.
+
+
+
+##Problem 2
+The dataset communitiesCrimeRaw2 includes 19 measurements on 302 communities across the US. 
+
+We first find the averages of these measurements at the state level so each row corresponds to one state.We have 44 states across the US.
+
+Then reduce the dimension using PCA and factor analysis. 
+```{r}
+CR=read.table("/Users/jing/Desktop/235/communitiesCrimeRaw2.csv",sep=',',header=T)
+CR=as.data.frame(CR)
+means=aggregate(CR[,4:21],list(CR$state),mean)
+CR.s <- scale(means[,2:19])
+
+#PCA
+pca.res = princomp(na.omit(CR.s))
+summary(pca.res)
+#loadings(pca.res) # small values are not printed
+z <- pca.res$scores # scores 
+pdf('pca_states.pdf')
+biplot(pca.res)
+dev.off()
+
+#scree plot
+plot(pca.res)
+df <- data.frame(PC = 1:length((pca.res$sdev)), Variance = (pca.res$sdev)^2)
+pdf('scree_states.pdf')
+qplot(PC, Variance, data= df, geom='line')
+dev.off()
+```
+From the scree plot, we could find the first 3 columns of z could explain the most part of the variance already,when achieve the first 10 columns of z, the variance is approximately 0.
+```{r}
+#Factor Analysis
+fa.res <- factanal(na.omit(CR.s), 2, scores='regression')
+print(fa.res)
+
+pdf('fa_states.pdf')
+biplot(fa.res$scores[, 1:2], fa.res$loadings[,1:2],xlim=c(-3, 3), ylim=c(-1, 3))
+dev.off()
+```
+The 63% of the variance explained by three factors is enough.
+
+##Problem 3
+The dataset “Forest Fires"includes 512 data with 13 measurements that could predict the burned area of the forest.
+
+
+We Use caret package in R to compare the following models via a 5-fold cross validation.
+```{r}
+library(caret)
+ff=read.table("/Users/jing/Desktop/235/hw1/forestfires.csv",sep=',',header=T)
+ff1=ff[,-c(3,4)]
+ff1<-cbind(ff1,as.numeric(ff$month),as.numeric(ff$day))
+ff1<-scale(ff1)
+# Define train control for k fold cross validation
+train_control <- trainControl(method="cv", number=5)
+# Fit linear Model
+set.seed(12345)
+model1 <- train(area~., data=ff1, trControl=train_control, method="lm")
+# Summarise Results
+print(model1)
+
+# Fit pcr Model
+set.seed(12345)
+model2 <- train(area~., data=ff1, trControl=train_control, method="pcr")
+# Summarise Results
+print(model2)
+
+# Fit pls Model
+set.seed(12345)
+model3 <- train(area~., data=ff1, trControl=train_control, method="pls")
+# Summarise Results
+print(model3)
+
+# Fit ridege Model
+set.seed(12345)
+model4 <- train(area~., data=ff1, trControl=train_control, method="ridge")
+# Summarise Results
+print(model4)
+
+# Fit lasso Model
+set.seed(12345)
+model5 <- train(area~., data=ff1, trControl=train_control, method="lasso")
+# Summarise Results
+print(model5)
+```

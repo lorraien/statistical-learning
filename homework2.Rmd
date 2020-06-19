@@ -1,0 +1,176 @@
+---
+title: "Homework 2"
+author: "Jing Liao"
+output:
+  pdf_document: default
+  word_document: default
+---
+
+##problem 1
+
+###a
+Use a piecewise linear model with continuity at knots to model the relationship between y and x1. Use cross-validation to decide between 2, 3, and 4 knots. The knots should be placed at equally spaced quantiles.
+
+```{r }
+data<-read.table("/Users/jing/Desktop/235/hw2/splineExample.txt",sep='',header=T)
+plot(data$x1,data$y)
+attach(data)
+range=max(x1)-min(x1) 
+knot4=c(min(x1)+range/5,min(x1)+range/5*2,min(x1)+range/5*3,min(x1)+range/5*4) 
+knot3=c(min(x1)+range/4,min(x1)+range/4*2,min(x1)+range/4*3)
+knot2=c(min(x1)+range/3,min(x1)+range/3*2)
+plot(x1,y)
+library(segmented)
+data<-data[sample(nrow(data)),]
+folds <- cut(seq(1,nrow(data)),breaks=5,labels=FALSE)
+
+#when knots=2
+mse=as.vector(c(0,0,0,0,0))
+for(i in 1:5){
+  testIndexes <- which(folds==i,arr.ind=TRUE)
+  testData <- data[testIndexes, ]
+  trainData <- data[-testIndexes, ] 
+  model=lm(y~x1,data=trainData) 
+  seg=segmented(model,Z=~x1,psi=knot2) 
+  fit=predict(seg,testData) 
+  mse[i]=sum((fit-testData$y)^2)
+} 
+print(mean(mse))
+#when knots=3
+mse=as.vector(c(0,0,0,0,0)) 
+for(i in 1:5){
+  testIndexes <- which(folds==i,arr.ind=TRUE)
+  testData <- data[testIndexes, ]
+  trainData <- data[-testIndexes, ] 
+  model=lm(y~x1,data=trainData) 
+  seg=segmented(model,Z=~x1,psi=knot3) 
+  fit=predict(seg,testData) 
+  mse[i]=sum((fit-testData$y)^2)
+} 
+print(mean(mse))
+#when knots=4
+mse=as.vector(c(0,0,0,0,0)) 
+for(i in 1:5){
+  testIndexes <- which(folds==i,arr.ind=TRUE)
+  testData <- data[testIndexes, ]
+  trainData <- data[-testIndexes, ] 
+  model=lm(y~x1,data=trainData) 
+  seg=segmented(model,Z=~x1,psi=knot4) 
+  fit=predict(seg,testData) 
+  mse[i]=sum((fit-testData$y)^2)
+} 
+print(mean(mse))
+```
+We could find that the MSE achieve the minimal values 2.87 when knots=4
+
+
+###b
+Use a natural cubic spline with 3 knots at the quartiles to model the relationship between y and x2.
+```{r }
+library(splines)
+plot(x2,y)
+basis.fn <- ns(x2, df=4)
+beta = coef(lm(y~basis.fn))
+t <- seq(-7, 7, .1)
+basis.fn.t = predict(basis.fn, t) 
+y.hat <-cbind(1, basis.fn.t)%*%beta 
+lines(t, y.hat, lwd=2, lty=3)
+```
+
+
+###c
+Use a smoothing spline to model the relationship between y and x1. Choose the degrees of freedom by using 5-fold cross validation.
+```{r }
+plot(x1, y)
+
+abline(v=-1, col='black')
+abline(v=1, col='black')
+sp.model=smooth.spline(x1,y,cv=FALSE) 
+sp.model$df
+
+```
+The degree of freedom  choosed by generalize cross validation is 13.64.
+
+
+###d
+Model y as a function of both x1 and x2 using an additive model with two-dimensional natural cubic splines. For x1, set the knots at -1.5, 0, and 1.5. For x2, set the knots at -4, 0, and 4.
+```{r }
+library(gam)  
+gam1 <- gam(y ~ ns(x1, knots=c(-1.5,0,1.5)) + ns(x2,knots=c(-4,0,4))) 
+plot(gam1, se=TRUE)
+summary(gam1)
+```
+
+###e
+Model y as a function of both x1 and x2 using a generalized additive model.
+```{r }
+gam2=gam(y ~ x1+x2) 
+summary(gam2)
+```
+
+
+##problem 2
+We want to predict the risk of diabetes using glu, bp, skin, bmi, ped, and age as covariates. Compare LDA, QDA, naive Bayes classifier, classification tree, and random forest using 5-fold cross validation.
+```{r,message=FALSE,warning=FALSE}
+
+library(caret)
+library(MASS)
+pima=read.table("/Users/jing/Desktop/235/hw2/pima.csv",sep=',',header=T)
+attach(pima)
+pima1<-pima[,-c(1,5)]
+
+set.seed(12345)
+index = createDataPartition(y=pima$diabetic, p=0.7, list=FALSE)
+train = pima1[index,]
+test = pima1[-index,]
+dim(train)
+
+# Define train control for k fold cross validation
+train_control <- trainControl(method="cv", number=5)
+
+# Fit LDA Model
+set.seed(12345)
+model1 <- train(as.factor(diabetic)~., data=train, trControl=train_control, method="lda")
+
+pred.diabetic1 = predict(model1, test)
+table(pred.diabetic1, test$diabetic)
+pred.accuracy1 = round(mean(pred.diabetic1 == test$diabetic)*100,2)
+pred.accuracy1
+
+
+# Fit QDA Model
+set.seed(12345)
+model2 <- train(as.factor(diabetic)~., data=train, trControl=train_control, method="qda")
+pred.diabetic2 = predict(model2, test)
+table(pred.diabetic2, test$diabetic)
+pred.accuracy2 = round(mean(pred.diabetic2 == test$diabetic)*100,2)
+pred.accuracy2
+
+# Fit naive bayes Model
+set.seed(12345)
+model3 <- train(as.factor(diabetic)~., data=train, trControl=train_control, method="nb")
+warnings('off')
+pred.diabetic3 = predict(model3, test)
+table(pred.diabetic3, test$diabetic)
+pred.accuracy3 <-round(mean(pred.diabetic3 == test$diabetic)*100,2)
+pred.accuracy3
+
+#fit classification tree
+set.seed(12345)
+model4 <- train(as.factor(diabetic)~., data=train, trControl=train_control, method="rpart")
+pred.diabetic4 <-predict(model4, test)
+table(pred.diabetic4, test$diabetic)
+pred.accuracy4<-round(mean(pred.diabetic4 == test$diabetic)*100,2)
+pred.accuracy4
+
+#random forest
+set.seed(12345)
+model5 <- train(as.factor(diabetic)~., data=train, trControl=train_control, method="rf")
+pred.diabetic5 <- predict(model5, test)
+table(pred.diabetic5, test$diabetic)
+pred.accuracy5 <-round(mean(pred.diabetic5 == test$diabetic)*100,2)
+pred.accuracy5
+
+invisible(capture.output(model1 <- train(as.factor(diabetic)~., data=train, trControl=train_control, method="lda")))
+```
+We could find that the random forest achieved the highest accuracy  with 76.52% in 5-fold cross validation.The following are Naive Bayes classifier and LinearDisciminant Analysis with 76.09% accuracy  ,Quadratic Discriminant Analysis with  75.65%  accuracy  , the lowest one is the ckassification tree with 75.22%.
